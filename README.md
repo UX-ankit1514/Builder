@@ -44,7 +44,7 @@ The IA says sign-up comes *after* the user has seen the app work (Flow 1). So:
 
 ## Firebase setup (one time)
 
-Project: **`builder-a7987`**. App ID on both platforms: **`com.uxankit.stepwise`**.
+Project: **`builder-a7987`**. Android package: **`Builder.com`** (as registered in Firebase). iOS bundle ID: **`com.uxankit.stepwise`**.
 
 In the [Firebase console](https://console.firebase.google.com/project/builder-a7987):
 
@@ -58,7 +58,7 @@ In the [Firebase console](https://console.firebase.google.com/project/builder-a7
    npx firebase-tools deploy --only firestore:rules,firestore:indexes
    ```
 4. **Add the Android app** (Project settings → Your apps → Android)
-   - Package name: `com.uxankit.stepwise`
+   - Package name: `Builder.com` (already registered)
    - Add your debug **SHA-1** (and later the release SHA-1). Get it with:
      ```sh
      keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA1

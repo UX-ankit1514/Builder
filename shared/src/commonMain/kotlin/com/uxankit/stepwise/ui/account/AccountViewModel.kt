@@ -23,9 +23,13 @@ class AccountViewModel : ViewModel() {
         private set
     var error by mutableStateOf<String?>(null)
 
-    fun startAsGuest() = run { accounts.startAsGuest() }
+    fun startAsGuest() = run(authError = "Couldn’t get started right now. Please try again in a moment.") {
+        accounts.startAsGuest()
+    }
 
-    fun signInWithGoogle(tokens: GoogleTokens, completeOnboarding: Boolean, onDone: (SignInOutcome) -> Unit = {}) = run {
+    fun signInWithGoogle(tokens: GoogleTokens, completeOnboarding: Boolean, onDone: (SignInOutcome) -> Unit = {}) = run(
+        authError = "Google sign-in didn’t work. Please try again.",
+    ) {
         val outcome = accounts.signInWithGoogle(tokens, completeOnboarding)
         when (outcome) {
             SignInOutcome.Linked -> AppGraph.messages.show("You’re signed in. Your tasks are backed up.")
@@ -54,7 +58,8 @@ class AccountViewModel : ViewModel() {
         error = message
     }
 
-    private fun run(block: suspend () -> Unit) {
+    /** [authError] is shown for Firebase Auth failures, so each action explains itself. */
+    private fun run(authError: String = "That didn’t work. Please try again.", block: suspend () -> Unit) {
         if (busy) return
         viewModelScope.launch {
             busy = true
@@ -70,7 +75,7 @@ class AccountViewModel : ViewModel() {
             } catch (e: FirebaseAuthRecentLoginRequiredException) {
                 error = "For your safety, please sign in with Google again, then retry."
             } catch (e: FirebaseAuthException) {
-                error = "Google sign-in didn’t work. Please try again."
+                error = authError
             } catch (e: Throwable) {
                 error = "Something went wrong. Please try again."
             } finally {

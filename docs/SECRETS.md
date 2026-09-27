@@ -36,7 +36,7 @@ good hygiene, but real protection comes from:
    console's test-mode rules on.
 2. **Firebase Authentication.** Only Google and the silent guest account are enabled.
 3. **API key restrictions** (to do in Google Cloud console → APIs & Services → Credentials):
-   restrict the Android key to package `com.uxankit.stepwise` + your SHA-1 fingerprints, and
+   restrict the Android key to package `Builder.com` + your SHA-1 fingerprints, and
    the iOS key to bundle ID `com.uxankit.stepwise`.
 4. **App Check** (next milestone): Play Integrity on Android, App Attest on iOS, then enforce
    it for Firestore and Auth so only the real app can call the backend.

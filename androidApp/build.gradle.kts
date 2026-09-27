@@ -28,7 +28,9 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.uxankit.stepwise"
+        // Must match the Android app registered in Firebase (project builder-a7987).
+        // The Kotlin namespace above stays com.uxankit.stepwise; only the installed app ID differs.
+        applicationId = "Builder.com"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
