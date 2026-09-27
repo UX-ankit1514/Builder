@@ -1,0 +1,71 @@
+rules_version = '2';
+
+// Stepwise security rules.
+//
+// Data model (see shared/.../data/firestore/Documents.kt):
+//   users/{uid}                 profile + synced settings
+//   users/{uid}/tasks/{taskId}  one task, with its steps embedded
+//
+// A user (Google or silent guest) can only ever touch documents under their own uid.
+// Documents are validated field by field; anything not listed here is rejected.
+// Every other path in the database is denied by default.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function optionalNumber(data, key) {
+      return !(key in data) || data[key] == null || data[key] is number;
+    }
+
+    function validSettings(s) {
+      return s is map
+        && s.keys().hasOnly(['aiSuggestions', 'reduceMotion', 'showProgressBars',
+                             'showStepDoneScreen', 'haptics', 'higherContrast'])
+        && s.values().hasOnly([true, false]);
+    }
+
+    function validProfile(p) {
+      return p.keys().hasOnly(['onboarded', 'createdAt', 'lastActiveAt', 'settings'])
+        && (!('onboarded' in p) || p.onboarded is bool)
+        && optionalNumber(p, 'createdAt')
+        && optionalNumber(p, 'lastActiveAt')
+        && (!('settings' in p) || validSettings(p.settings));
+    }
+
+    function validTask(t) {
+      return t.keys().hasAll(['title', 'list', 'createdAt', 'updatedAt', 'sortOrder'])
+        && t.keys().hasOnly(['title', 'notes', 'deadline', 'list', 'steps', 'pausedAt',
+                             'skippedAt', 'completedAt', 'createdAt', 'updatedAt',
+                             'sortOrder', 'plannedAt'])
+        && t.title is string && t.title.size() > 0 && t.title.size() <= 200
+        && (!('notes' in t) || (t.notes is string && t.notes.size() <= 5000))
+        && (!('deadline' in t) || t.deadline == null
+            || (t.deadline is string && t.deadline.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+        && t.list in ['inbox', 'today', 'urgent']
+        && (!('steps' in t) || (t.steps is list && t.steps.size() <= 50))
+        && t.createdAt is number && t.updatedAt is number && t.sortOrder is number
+        && optionalNumber(t, 'pausedAt')
+        && optionalNumber(t, 'skippedAt')
+        && optionalNumber(t, 'completedAt')
+        && optionalNumber(t, 'plannedAt');
+    }
+
+    match /users/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow create, update: if isOwner(uid) && validProfile(request.resource.data);
+      allow delete: if isOwner(uid);
+
+      match /tasks/{taskId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && taskId.size() <= 40
+          && validTask(request.resource.data);
+        allow delete: if isOwner(uid);
+      }
+    }
+  }
+}

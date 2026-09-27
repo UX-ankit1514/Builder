@@ -1,0 +1,12 @@
+<resources>
+    <color name="cream_paper">#F5F1E4</color>
+    <color name="fresh_grass">#8ED462</color>
+
+    <!-- Cream window background so there is no white flash before Compose draws. -->
+    <style name="Theme.Stepwise" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/cream_paper</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

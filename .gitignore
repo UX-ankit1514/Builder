@@ -1,0 +1,47 @@
+# ---------------------------------------------------------------
+# Secrets and per-developer config. NEVER commit these.
+# This repository is public. See docs/SECRETS.md.
+# ---------------------------------------------------------------
+local.properties
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+.env
+.env.*
+!.env.example
+
+# Firebase config files (downloaded from the Firebase console)
+google-services.json
+GoogleService-Info.plist
+
+# iOS secrets (Google reversed client ID, team ID)
+iosApp/Configuration/Secrets.xcconfig
+
+# Firebase CLI / emulators
+.firebase/
+*-debug.log
+firebase/tests/node_modules/
+
+# ---------------------------------------------------------------
+# Build output and IDE files
+# ---------------------------------------------------------------
+*.iml
+.kotlin
+.gradle
+**/build/
+xcuserdata
+!src/**/build/
+.idea
+.DS_Store
+captures
+.externalNativeBuild
+.cxx
+node_modules/
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcshareddata/WorkspaceSettings.xcsettings

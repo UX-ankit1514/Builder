@@ -1,0 +1,7 @@
+BUNDLE_ID=com.uxankit.stepwise
+APP_NAME=Stepwise
+TEAM_ID=
+
+// Optional per-developer overrides such as TEAM_ID (gitignored).
+// Copy Secrets.example.xcconfig to Secrets.xcconfig to use it.
+#include? "Secrets.xcconfig"
