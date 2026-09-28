@@ -2,6 +2,7 @@ package com.uxankit.stepwise.platform
 
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.uxankit.stepwise.data.GoogleTokens
+import com.uxankit.stepwise.sound.UiSoundPlayer
 
 sealed interface GoogleSignInResult {
     data class Success(val tokens: GoogleTokens) : GoogleSignInResult
@@ -25,6 +26,7 @@ interface FileSharer {
 class Platform(
     val googleSignIn: GoogleSignInLauncher,
     val fileSharer: FileSharer,
+    val sounds: UiSoundPlayer = UiSoundPlayer.None,
 )
 
 val LocalPlatform = staticCompositionLocalOf<Platform> { error("Platform not provided") }

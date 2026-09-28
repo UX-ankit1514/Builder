@@ -1,8 +1,10 @@
 package com.uxankit.stepwise.ui.home
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,8 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,14 +40,21 @@ import com.uxankit.stepwise.data.SessionUser
 import com.uxankit.stepwise.data.model.Limits
 import com.uxankit.stepwise.data.model.Task
 import com.uxankit.stepwise.domain.Planner
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.ui.components.PopNumber
 import com.uxankit.stepwise.ui.components.PrimaryCta
 import com.uxankit.stepwise.ui.components.SectionHeader
 import com.uxankit.stepwise.ui.components.SegmentedProgress
 import com.uxankit.stepwise.ui.components.ServiceCta
 import com.uxankit.stepwise.ui.components.StepCard
 import com.uxankit.stepwise.ui.components.StepsIllustration
+import com.uxankit.stepwise.ui.components.SwapText
 import com.uxankit.stepwise.ui.components.TabHeader
 import com.uxankit.stepwise.ui.components.TaskRow
+import com.uxankit.stepwise.ui.components.animateRow
+import com.uxankit.stepwise.ui.components.pressClickable
+import com.uxankit.stepwise.ui.components.reveal
+import com.uxankit.stepwise.ui.theme.Motion
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 import com.uxankit.stepwise.util.DateText
@@ -84,15 +92,27 @@ fun TodayTab(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { TabHeader(overline = DateText.long(today), title = greeting, onProfile = onProfile) }
+        item(key = "header") { TabHeader(overline = DateText.long(today), title = greeting, onProfile = onProfile) }
 
         if (urgent.isEmpty() && todays.isEmpty() && continueTask == null) {
-            item { ClearDayCard(inboxCount, onPickFromInbox, onQuickAdd) }
+            item(key = "clear-day") { ClearDayCard(inboxCount, onPickFromInbox, onQuickAdd, animateRow()) }
         } else {
             if (urgent.isNotEmpty()) {
-                item { SectionHeader("Urgent", trailing = "${urgent.size} of ${Limits.URGENT}", icon = StepIcons.Emergency) }
-                item(key = urgent.first().id) {
-                    UrgentCard(urgent.first(), onStart = { onStart(urgent.first().id) }, onOpen = { onOpenTask(urgent.first().id) })
+                item(key = "urgent-header") {
+                    SectionHeader(
+                        "Urgent",
+                        trailing = "${urgent.size} of ${Limits.URGENT}",
+                        icon = StepIcons.Emergency,
+                        modifier = animateRow(),
+                    )
+                }
+                item(key = "urgent-" + urgent.first().id) {
+                    UrgentCard(
+                        urgent.first(),
+                        onStart = { onStart(urgent.first().id) },
+                        onOpen = { onOpenTask(urgent.first().id) },
+                        modifier = animateRow(),
+                    )
                 }
                 items(urgent.drop(1), key = { it.id }) { task ->
                     TaskRow(
@@ -102,20 +122,23 @@ fun TodayTab(
                         onToggle = { onToggleDone(task, true) },
                         onClick = { onOpenTask(task.id) },
                         border = BorderStroke(1.5.dp, colors.coral),
+                        modifier = animateRow(),
                     )
                 }
             }
             if (continueTask != null) {
-                item(key = "continue") { ContinueCard(continueTask, onContinue = { onStart(continueTask.id) }) }
+                item(key = "continue") { ContinueCard(continueTask, onContinue = { onStart(continueTask.id) }, modifier = animateRow()) }
             }
-            item { SectionHeader("Today’s tasks", trailing = "${todays.size} of ${Limits.TODAY}") }
+            item(key = "today-header") {
+                SectionHeader("Today’s tasks", trailing = "${todays.size} of ${Limits.TODAY}", modifier = animateRow())
+            }
             if (todays.isEmpty()) {
-                item {
+                item(key = "today-empty") {
                     Text(
                         if (inboxCount > 0) "Nothing else planned. Pick one from your Inbox when you’re ready." else "Nothing else planned.",
                         style = StepwiseTheme.type.body,
                         color = colors.muted,
-                        modifier = Modifier.padding(horizontal = 4.dp),
+                        modifier = animateRow().padding(horizontal = 4.dp),
                     )
                 }
             }
@@ -126,12 +149,15 @@ fun TodayTab(
                     checked = false,
                     onToggle = { onToggleDone(task, true) },
                     onClick = { onOpenTask(task.id) },
+                    modifier = animateRow(),
                 )
             }
         }
 
         if (doneToday.isNotEmpty()) {
-            item(key = "done-header") { DoneTodayHeader(doneToday.size, expanded = showDone, onToggle = { showDone = !showDone }) }
+            item(key = "done-header") {
+                DoneTodayHeader(doneToday.size, expanded = showDone, onToggle = { showDone = !showDone }, modifier = animateRow())
+            }
             if (showDone) {
                 items(doneToday, key = { "done-" + it.id }) { task ->
                     TaskRow(
@@ -140,6 +166,7 @@ fun TodayTab(
                         checked = true,
                         onToggle = { onToggleDone(task, false) },
                         onClick = { onOpenTask(task.id) },
+                        modifier = animateRow(),
                     )
                 }
             }
@@ -156,9 +183,10 @@ internal fun metaLine(task: Task): String? {
 }
 
 @Composable
-private fun UrgentCard(task: Task, onStart: () -> Unit, onOpen: () -> Unit) {
+private fun UrgentCard(task: Task, onStart: () -> Unit, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val colors = StepwiseTheme.colors
     StepCard(
+        modifier = modifier,
         border = BorderStroke(1.5.dp, colors.coral),
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 22.dp),
         onClick = onOpen,
@@ -176,14 +204,14 @@ private fun UrgentCard(task: Task, onStart: () -> Unit, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun ContinueCard(task: Task, onContinue: () -> Unit) {
+private fun ContinueCard(task: Task, onContinue: () -> Unit, modifier: Modifier = Modifier) {
     val colors = StepwiseTheme.colors
     val total = task.steps.size.coerceAtLeast(1)
     val stepNumber = (task.currentStepIndex + 1).coerceAtLeast(1)
-    StepCard(onClick = onContinue) {
+    StepCard(modifier = modifier, onClick = onContinue) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Continue where you left", style = StepwiseTheme.type.body, color = colors.muted, modifier = Modifier.weight(1f))
-            Text("Step $stepNumber of $total", style = StepwiseTheme.type.label, color = colors.ink)
+            SwapText("Step $stepNumber of $total", style = StepwiseTheme.type.label, color = colors.ink)
         }
         Text(task.title, style = StepwiseTheme.type.bodyLargeMedium, color = colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
         SegmentedProgress(total = task.steps.size, done = task.stepsDone)
@@ -201,33 +229,33 @@ private fun ContinueCard(task: Task, onContinue: () -> Unit) {
     }
 }
 
-/** 2.4 "A clear day". No backlog, no guilt. */
+/** 2.4 "A clear day". No backlog, no guilt. The illustration and copy rise in one after another. */
 @Composable
-private fun ClearDayCard(inboxCount: Int, onPickFromInbox: () -> Unit, onQuickAdd: () -> Unit) = Column {
+private fun ClearDayCard(inboxCount: Int, onPickFromInbox: () -> Unit, onQuickAdd: () -> Unit, modifier: Modifier = Modifier) = Column(modifier) {
     val colors = StepwiseTheme.colors
     StepCard(
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 28.dp),
         spacing = 14,
     ) {
-        StepsIllustration(Modifier.fillMaxWidth(0.62f).align(Alignment.CenterHorizontally))
+        StepsIllustration(Modifier.fillMaxWidth(0.62f).align(Alignment.CenterHorizontally).reveal(0, Motion.MICRO))
         Text(
             "A clear day",
             style = StepwiseTheme.type.title.copy(fontSize = StepwiseTheme.type.section.fontSize * 1.2f),
             color = colors.ink,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().reveal(1, Motion.MICRO),
         )
         Text(
             "Nothing is planned yet. Pick up to ${Limits.TODAY} tasks from your Inbox, or tap + to add something new.",
             style = StepwiseTheme.type.body,
             color = colors.muted,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().reveal(2, Motion.MICRO),
         )
         if (inboxCount > 0) {
-            ServiceCta(text = "Pick from Inbox", onClick = onPickFromInbox)
+            ServiceCta(text = "Pick from Inbox", onClick = onPickFromInbox, sound = UiSound.Navigate)
         } else {
-            ServiceCta(text = "Add a task", onClick = onQuickAdd)
+            ServiceCta(text = "Add a task", onClick = onQuickAdd, sound = UiSound.Open)
         }
     }
     if (inboxCount > 0) {
@@ -243,14 +271,19 @@ private fun ClearDayCard(inboxCount: Int, onPickFromInbox: () -> Unit, onQuickAd
     }
 }
 
+/** Accordion header: the chevron flips from "v" to "^" and the done rows fade in below it. */
 @Composable
-private fun DoneTodayHeader(count: Int, expanded: Boolean, onToggle: () -> Unit) {
+private fun DoneTodayHeader(count: Int, expanded: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     val colors = StepwiseTheme.colors
+    val flip by animateFloatAsState(
+        if (expanded) -1f else 1f,
+        if (StepwiseTheme.settings.reduceMotion) snap() else tween(Motion.FAST, easing = Motion.SmoothOut),
+        label = "chevron flip",
+    )
     Row(
-        modifier = Modifier
+        modifier = modifier
+            .pressClickable(CircleShape, sound = if (expanded) UiSound.Close else UiSound.Open, onClick = onToggle)
             .fillMaxWidth()
-            .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onToggle)
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -258,12 +291,14 @@ private fun DoneTodayHeader(count: Int, expanded: Boolean, onToggle: () -> Unit)
             Icon(StepIcons.Check, contentDescription = null, tint = colors.ink, modifier = Modifier.size(14.dp))
         }
         Spacer(Modifier.width(8.dp))
-        Text("Done today · $count", style = StepwiseTheme.type.label, color = colors.ink, modifier = Modifier.weight(1f))
+        Text("Done today · ", style = StepwiseTheme.type.label, color = colors.ink)
+        PopNumber(count, style = StepwiseTheme.type.label, color = colors.ink)
+        Spacer(Modifier.weight(1f))
         Icon(
             StepIcons.ChevronDown,
             contentDescription = if (expanded) "Hide done tasks" else "Show done tasks",
             tint = colors.muted,
-            modifier = Modifier.size(20.dp).rotate(if (expanded) 180f else 0f),
+            modifier = Modifier.size(20.dp).graphicsLayer { scaleY = flip },
         )
     }
 }

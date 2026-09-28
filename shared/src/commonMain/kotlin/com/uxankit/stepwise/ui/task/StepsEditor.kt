@@ -1,5 +1,7 @@
 package com.uxankit.stepwise.ui.task
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,8 +36,12 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.uxankit.stepwise.data.model.Limits
 import com.uxankit.stepwise.data.model.Task
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.sound.rememberUiSounds
 import com.uxankit.stepwise.ui.components.CircleIconButton
 import com.uxankit.stepwise.ui.components.StepwiseTextField
+import com.uxankit.stepwise.ui.components.reveal
+import com.uxankit.stepwise.ui.theme.Motion
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 
@@ -57,28 +64,41 @@ fun StepsEditor(
     showHint: Boolean = true,
 ) {
     val colors = StepwiseTheme.colors
+    val sounds = rememberUiSounds()
     fun add() {
         if (draft.isBlank() || steps.size >= Limits.STEPS_MAX) return
+        sounds.play(UiSound.Select)
         onChange(steps.withDraft(draft))
         onDraftChange("")
     }
 
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Steps that were already there when the editor opened don't animate; new ones rise in.
+    val initialKeys = remember { steps.map { it.key }.toSet() }
+    val reduceMotion = StepwiseTheme.settings.reduceMotion
+    Column(
+        modifier
+            .fillMaxWidth()
+            .then(if (reduceMotion) Modifier else Modifier.animateContentSize(tween(Motion.FAST, easing = Motion.SmoothOut))),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         steps.forEachIndexed { index, step ->
-            StepEditRow(
-                number = "$numberPrefix${index + 1}",
-                step = step,
-                canMoveUp = index > 0,
-                canMoveDown = index < steps.lastIndex,
-                onTitle = { title -> onChange(steps.map { if (it.key == step.key) it.copy(title = title) else it }) },
-                onMove = { delta ->
-                    val list = steps.toMutableList()
-                    val item = list.removeAt(index)
-                    list.add((index + delta).coerceIn(0, list.size), item)
-                    onChange(list)
-                },
-                onRemove = { onChange(steps.filterNot { it.key == step.key }) },
-            )
+            key(step.key) {
+                StepEditRow(
+                    number = "$numberPrefix${index + 1}",
+                    step = step,
+                    canMoveUp = index > 0,
+                    canMoveDown = index < steps.lastIndex,
+                    onTitle = { title -> onChange(steps.map { if (it.key == step.key) it.copy(title = title) else it }) },
+                    onMove = { delta ->
+                        val list = steps.toMutableList()
+                        val item = list.removeAt(index)
+                        list.add((index + delta).coerceIn(0, list.size), item)
+                        onChange(list)
+                    },
+                    onRemove = { onChange(steps.filterNot { it.key == step.key }) },
+                    modifier = if (step.key in initialKeys) Modifier else Modifier.reveal(),
+                )
+            }
         }
         StepwiseTextField(
             value = draft,
@@ -111,11 +131,18 @@ private fun StepEditRow(
     onTitle: (String) -> Unit,
     onMove: (Int) -> Unit,
     onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = StepwiseTheme.colors
+    val sounds = rememberUiSounds()
     var menu by remember { mutableStateOf(false) }
+    fun pick(sound: UiSound, action: () -> Unit) {
+        sounds.play(sound)
+        menu = false
+        action()
+    }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .clip(CircleShape)
@@ -141,11 +168,18 @@ private fun StepEditRow(
             modifier = Modifier.weight(1f).padding(vertical = 12.dp).semantics { contentDescription = "Step $number" },
         )
         Box {
-            CircleIconButton(StepIcons.More, contentDescription = "Step $number options", onClick = { menu = true }, size = 40.dp, iconSize = 18.dp)
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = colors.surface) {
-                if (canMoveUp) DropdownMenuItem(text = { Text("Move up") }, onClick = { menu = false; onMove(-1) })
-                if (canMoveDown) DropdownMenuItem(text = { Text("Move down") }, onClick = { menu = false; onMove(1) })
-                DropdownMenuItem(text = { Text("Remove step") }, onClick = { menu = false; onRemove() })
+            CircleIconButton(
+                StepIcons.More,
+                contentDescription = "Step $number options",
+                onClick = { menu = true },
+                size = 40.dp,
+                iconSize = 18.dp,
+                sound = UiSound.Open,
+            )
+            DropdownMenu(expanded = menu, onDismissRequest = { pick(UiSound.Close) {} }, containerColor = colors.surface) {
+                if (canMoveUp) DropdownMenuItem(text = { Text("Move up") }, onClick = { pick(UiSound.Select) { onMove(-1) } })
+                if (canMoveDown) DropdownMenuItem(text = { Text("Move down") }, onClick = { pick(UiSound.Select) { onMove(1) } })
+                DropdownMenuItem(text = { Text("Remove step") }, onClick = { pick(UiSound.Unsave, onRemove) })
             }
         }
     }

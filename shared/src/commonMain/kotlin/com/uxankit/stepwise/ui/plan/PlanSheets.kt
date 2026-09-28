@@ -1,5 +1,9 @@
 package com.uxankit.stepwise.ui.plan
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,6 +28,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -36,11 +44,15 @@ import com.uxankit.stepwise.data.model.Limits
 import com.uxankit.stepwise.data.model.Task
 import com.uxankit.stepwise.data.model.TaskList
 import com.uxankit.stepwise.domain.Planner
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.sound.rememberUiSounds
 import com.uxankit.stepwise.ui.components.ChoiceCard
 import com.uxankit.stepwise.ui.components.Chip
 import com.uxankit.stepwise.ui.components.GroupShape
 import com.uxankit.stepwise.ui.components.ServiceCta
 import com.uxankit.stepwise.ui.components.StepwiseSheet
+import com.uxankit.stepwise.ui.components.pressClickable
+import com.uxankit.stepwise.ui.theme.Motion
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 import com.uxankit.stepwise.util.DateText
@@ -75,21 +87,26 @@ fun PlanSheet(
             iconBackground = colors.grass,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SoftButton(StepIcons.Edit, "Open task page", onOpen, Modifier.weight(1f))
-            SoftButton(StepIcons.Trash, "Delete", onDelete, Modifier.weight(1f))
+            SoftButton(StepIcons.Edit, "Open task page", onOpen, Modifier.weight(1f), sound = UiSound.Navigate)
+            SoftButton(StepIcons.Trash, "Delete", onDelete, Modifier.weight(1f), sound = UiSound.Unsave)
         }
     }
 }
 
 @Composable
-fun SoftButton(icon: ImageVector, text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun SoftButton(
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    sound: UiSound = UiSound.PressSoft,
+) {
     val colors = StepwiseTheme.colors
     Row(
         modifier = modifier
+            .pressClickable(CircleShape, sound = sound, onClick = onClick)
             .heightIn(min = 46.dp)
-            .clip(CircleShape)
             .background(colors.canvas)
-            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -176,25 +193,56 @@ fun RebalanceSheet(
             text = if (isUrgent) "Keep these $targetCount urgent" else "Keep these $targetCount for today",
             onClick = { onApply(choices) },
             enabled = targetCount <= limit,
+            sound = UiSound.Save,
         )
     }
 }
 
+/** Segmented control: the ink pill slides to the chosen option (transitions.dev tabs sliding). */
 @Composable
 private fun Segmented(options: List<TaskList>, selected: TaskList, onSelect: (TaskList) -> Unit) {
     val colors = StepwiseTheme.colors
-    Row(Modifier.fillMaxWidth().clip(CircleShape).background(colors.surface).padding(4.dp)) {
+    val reduceMotion = StepwiseTheme.settings.reduceMotion
+    val sounds = rememberUiSounds()
+    val position by animateFloatAsState(
+        options.indexOf(selected).coerceAtLeast(0).toFloat(),
+        if (reduceMotion) snap() else tween(Motion.FAST, easing = Motion.SmoothOut),
+        label = "segment pill",
+    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(CircleShape)
+            .background(colors.surface)
+            .padding(4.dp)
+            .drawBehind {
+                val width = size.width / options.size
+                drawRoundRect(
+                    color = colors.ink,
+                    topLeft = Offset(width * position, 0f),
+                    size = Size(width, size.height),
+                    cornerRadius = CornerRadius(size.height / 2),
+                )
+            },
+    ) {
         options.forEach { option ->
             val isSelected = option == selected
+            val textColor by animateColorAsState(
+                if (isSelected) Color.White else colors.ink,
+                tween(Motion.FAST, easing = Motion.SmoothOut),
+                label = "segment text",
+            )
             Text(
                 text = option.name,
                 style = StepwiseTheme.type.small,
-                color = if (isSelected) Color.White else colors.ink,
+                color = textColor,
                 modifier = Modifier
                     .weight(1f)
                     .clip(CircleShape)
-                    .background(if (isSelected) colors.ink else Color.Transparent)
-                    .clickable(role = Role.RadioButton) { onSelect(option) }
+                    .clickable(role = Role.RadioButton) {
+                        if (!isSelected) sounds.play(UiSound.Pop)
+                        onSelect(option)
+                    }
                     .semantics { this.selected = isSelected }
                     .padding(vertical = 9.dp),
                 textAlign = TextAlign.Center,

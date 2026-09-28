@@ -1,8 +1,13 @@
 package com.uxankit.stepwise.ui.task
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -49,6 +56,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.uxankit.stepwise.data.model.Limits
 import com.uxankit.stepwise.data.model.Task
 import com.uxankit.stepwise.data.model.TaskList
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.sound.rememberUiSounds
 import com.uxankit.stepwise.ui.components.ChoiceCard
 import com.uxankit.stepwise.ui.components.Chip
 import com.uxankit.stepwise.ui.components.CircleIconButton
@@ -62,13 +71,17 @@ import com.uxankit.stepwise.ui.components.ScreenScaffold
 import com.uxankit.stepwise.ui.components.SectionHeader
 import com.uxankit.stepwise.ui.components.SegmentedProgress
 import com.uxankit.stepwise.ui.components.ServiceCta
+import com.uxankit.stepwise.ui.components.StepBubble
 import com.uxankit.stepwise.ui.components.StepCard
 import com.uxankit.stepwise.ui.components.StepsIllustration
 import com.uxankit.stepwise.ui.components.StepwiseSheet
 import com.uxankit.stepwise.ui.components.StepwiseTextField
+import com.uxankit.stepwise.ui.components.SwapText
 import com.uxankit.stepwise.ui.components.TextLink
+import com.uxankit.stepwise.ui.components.pressClickable
 import com.uxankit.stepwise.ui.plan.RebalanceSheet
 import com.uxankit.stepwise.ui.requireUser
+import com.uxankit.stepwise.ui.theme.Motion
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 import com.uxankit.stepwise.util.DateText
@@ -125,26 +138,42 @@ private fun TaskContent(
     var editNotes by remember { mutableStateOf(false) }
     var pickDate by remember { mutableStateOf(false) }
     var chooseHow by remember { mutableStateOf(false) }
+    val sounds = rememberUiSounds()
 
     ScreenScaffold(
         bodySpacing = 16,
         bottom = {
             MessageHost()
-            when {
-                task.isDone -> PrimaryCta("Mark as not done", onClick = { vm.setDone(false) }, fillWidth = true, tall = true)
-                task.hasSteps -> ServiceCta("Start step ${(task.currentStepIndex + 1).coerceAtLeast(1)}", onClick = onStart)
-                else -> ServiceCta("Start", onClick = onStart)
+            AnimatedContent(
+                targetState = task.isDone,
+                transitionSpec = {
+                    fadeIn(tween(Motion.FAST, easing = Motion.SmoothOut)) togetherWith fadeOut(tween(Motion.QUICK, easing = Motion.SmoothOut))
+                },
+                label = "task action",
+            ) { done ->
+                when {
+                    done -> PrimaryCta("Mark as not done", onClick = { vm.setDone(false) }, fillWidth = true, tall = true, sound = UiSound.Unsave)
+                    task.hasSteps -> ServiceCta("Start step ${(task.currentStepIndex + 1).coerceAtLeast(1)}", onClick = onStart)
+                    else -> ServiceCta("Start", onClick = onStart)
+                }
             }
         },
     ) {
         Box {
             NavHeader(
                 title = "Task",
-                leading = HeaderAction(StepIcons.ChevronLeft, "Back", onBack),
-                trailing = HeaderAction(StepIcons.More, "Task options") { menu = true },
+                leading = HeaderAction(StepIcons.ChevronLeft, "Back", onClick = onBack),
+                trailing = HeaderAction(StepIcons.More, "Task options", UiSound.Open) { menu = true },
             )
             Box(Modifier.align(Alignment.TopEnd).padding(top = 44.dp)) {
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = colors.surface) {
+                DropdownMenu(
+                    expanded = menu,
+                    onDismissRequest = {
+                        sounds.play(UiSound.Close)
+                        menu = false
+                    },
+                    containerColor = colors.surface,
+                ) {
                     val moves = listOf(
                         TaskList.Urgent to "Mark as urgent",
                         TaskList.Today to "Move to Today",
@@ -154,8 +183,8 @@ private fun TaskContent(
                         MenuItem(label) { menu = false; vm.move(list) }
                     }
                     MenuItem("Rename") { menu = false; editTitle = true }
-                    if (!task.isDone) MenuItem("Mark as done") { menu = false; vm.setDone(true) }
-                    MenuItem("Delete task") {
+                    if (!task.isDone) MenuItem("Mark as done", UiSound.Success) { menu = false; vm.setDone(true) }
+                    MenuItem("Delete task", UiSound.Unsave) {
                         menu = false
                         vm.delete()
                         onBack()
@@ -170,7 +199,10 @@ private fun TaskContent(
             color = colors.ink,
             modifier = Modifier
                 .padding(horizontal = 4.dp)
-                .clickable(role = Role.Button, onClickLabel = "Rename") { editTitle = true },
+                .clickable(role = Role.Button, onClickLabel = "Rename") {
+                    sounds.play(UiSound.Open)
+                    editTitle = true
+                },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
             Chip(
@@ -224,7 +256,7 @@ private fun TaskContent(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                ServiceCta("Break it down", onClick = { chooseHow = true })
+                ServiceCta("Break it down", onClick = { chooseHow = true }, sound = UiSound.Open)
             }
             TextLink("Or start it as one task", onClick = onStart, modifier = Modifier.align(Alignment.CenterHorizontally))
         }
@@ -269,15 +301,30 @@ private fun TaskContent(
 }
 
 @Composable
-private fun MenuItem(label: String, onClick: () -> Unit) {
-    DropdownMenuItem(text = { Text(label, style = StepwiseTheme.type.body, color = StepwiseTheme.colors.ink) }, onClick = onClick)
+private fun MenuItem(label: String, sound: UiSound = UiSound.Select, onClick: () -> Unit) {
+    val sounds = rememberUiSounds()
+    DropdownMenuItem(
+        text = { Text(label, style = StepwiseTheme.type.body, color = StepwiseTheme.colors.ink) },
+        onClick = {
+            sounds.play(sound)
+            onClick()
+        },
+    )
 }
 
+/** A row that opens a sheet or dialog to edit one detail. */
 @Composable
 private fun DetailRow(icon: ImageVector, label: String, value: String, onClick: () -> Unit) {
     val colors = StepwiseTheme.colors
+    val sounds = rememberUiSounds()
     Row(
-        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(horizontal = 18.dp, vertical = 14.dp),
+        Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button) {
+                sounds.play(UiSound.Open)
+                onClick()
+            }
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.dp))
@@ -294,51 +341,40 @@ private fun DetailRow(icon: ImageVector, label: String, value: String, onClick: 
 @Composable
 private fun StepsCard(task: Task, onToggle: (String) -> Unit, onEdit: () -> Unit) {
     val colors = StepwiseTheme.colors
+    val haptics = LocalHapticFeedback.current
+    val hapticsOn = StepwiseTheme.settings.haptics
     StepCard(shape = GroupShape, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp), spacing = 12) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Steps", style = StepwiseTheme.type.section, color = colors.ink, modifier = Modifier.weight(1f))
-            Text("${task.stepsDone} of ${task.steps.size} done", style = StepwiseTheme.type.small, color = colors.muted)
+            SwapText("${task.stepsDone} of ${task.steps.size} done", style = StepwiseTheme.type.small, color = colors.muted)
         }
         SegmentedProgress(total = task.steps.size, done = task.stepsDone, markCurrent = false)
         task.steps.forEachIndexed { index, step ->
-            val isCurrent = index == task.currentStepIndex
+            val titleColor by animateColorAsState(
+                if (step.done) colors.muted else colors.ink,
+                tween(Motion.QUICK, easing = Motion.SmoothOut),
+                label = "step title",
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(CircleShape)
-                        .clickable(role = Role.Checkbox) { onToggle(step.id) }
+                        .pressClickable(CircleShape, role = Role.Checkbox, sound = if (step.done) UiSound.ToggleOff else UiSound.Pop) {
+                            if (hapticsOn) haptics.performHapticFeedback(if (step.done) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
+                            onToggle(step.id)
+                        }
                         .semantics {
                             contentDescription = "Step ${index + 1}"
                             stateDescription = if (step.done) "Done" else "Not done"
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(
-                                when {
-                                    step.done -> colors.grass
-                                    isCurrent -> colors.ink
-                                    else -> colors.surface
-                                },
-                            )
-                            .then(if (!step.done && !isCurrent) Modifier.border(BorderStroke(1.dp, colors.hairline), CircleShape) else Modifier),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (step.done) {
-                            Icon(StepIcons.Check, contentDescription = null, tint = colors.ink, modifier = Modifier.size(14.dp))
-                        } else {
-                            Text("${index + 1}", style = StepwiseTheme.type.caption, color = if (isCurrent) colors.onInk else colors.muted)
-                        }
-                    }
+                    StepBubble(number = index + 1, done = step.done, current = index == task.currentStepIndex)
                 }
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Step ${index + 1}", style = StepwiseTheme.type.small, color = colors.muted)
-                    Text(step.title, style = StepwiseTheme.type.body, color = if (step.done) colors.muted else colors.ink)
+                    Text(step.title, style = StepwiseTheme.type.body, color = titleColor)
                 }
             }
         }
@@ -357,6 +393,7 @@ private fun BreakDownHowSheet(onMyself: () -> Unit, onDismiss: () -> Unit) {
             hint = "Type a few small actions, in order.",
             onClick = onMyself,
             border = BorderStroke(1.5.dp, colors.ink),
+            sound = UiSound.Navigate,
         )
         ChoiceCard(
             icon = StepIcons.Sparkles,
@@ -378,6 +415,7 @@ fun TextEditSheet(
     onDismiss: () -> Unit,
 ) {
     var value by remember { mutableStateOf(initial) }
+    val sounds = rememberUiSounds()
     fun save() {
         onSave(value)
         onDismiss()
@@ -389,9 +427,14 @@ fun TextEditSheet(
             placeholder = if (singleLine) "Task name" else "Anything that helps you start",
             singleLine = singleLine,
             maxLength = maxLength,
-            onImeAction = { if (singleLine) save() },
+            onImeAction = {
+                if (singleLine && value.isNotBlank()) {
+                    sounds.play(UiSound.Save)
+                    save()
+                }
+            },
         )
-        ServiceCta("Save", onClick = ::save, enabled = !singleLine || value.isNotBlank())
+        ServiceCta("Save", onClick = ::save, enabled = !singleLine || value.isNotBlank(), sound = UiSound.Save)
     }
 }
 
@@ -409,11 +452,16 @@ private fun DeadlinePicker(initial: LocalDate?, onPick: (LocalDate?) -> Unit, on
         todayDateBorderColor = colors.grass,
         todayContentColor = colors.ink,
     )
+    val sounds = rememberUiSounds()
     DatePickerDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            sounds.play(UiSound.Close)
+            onDismiss()
+        },
         colors = pickerColors,
         confirmButton = {
             TextButton(onClick = {
+                sounds.play(UiSound.Save)
                 state.selectedDateMillis?.let { millis ->
                     onPick(Instant.fromEpochMilliseconds(millis).toLocalDateTime(TimeZone.UTC).date)
                 }
@@ -422,6 +470,7 @@ private fun DeadlinePicker(initial: LocalDate?, onPick: (LocalDate?) -> Unit, on
         },
         dismissButton = {
             TextButton(onClick = {
+                sounds.play(if (initial != null) UiSound.Unsave else UiSound.Close)
                 if (initial != null) onPick(null)
                 onDismiss()
             }) { Text(if (initial != null) "Remove deadline" else "Cancel", color = colors.muted) }

@@ -1,9 +1,13 @@
 package com.uxankit.stepwise.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,20 +26,39 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.ui.theme.Motion
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 val CardShape = RoundedCornerShape(50.dp)
 val GroupShape = RoundedCornerShape(30.dp)
@@ -50,30 +73,37 @@ fun StepCard(
     contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp, vertical = 20.dp),
     spacing: Int = 10,
     onClick: (() -> Unit)? = null,
+    sound: UiSound = UiSound.Navigate,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
         modifier = modifier
+            .then(if (onClick != null) Modifier.pressClickable(shape, sound = sound, onClick = onClick) else Modifier.clip(shape))
             .fillMaxWidth()
-            .clip(shape)
             .background(color)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
-            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(contentPadding),
         verticalArrangement = Arrangement.spacedBy(spacing.dp),
         content = content,
     )
 }
 
-/** Round "mark done" toggle used on task and step rows. */
+/** Round "mark done" toggle used on task and step rows. The box fills, then the check draws in, with a pop. */
 @Composable
 fun CheckCircle(checked: Boolean, onToggle: () -> Unit, label: String, modifier: Modifier = Modifier) {
     val colors = StepwiseTheme.colors
+    val haptics = LocalHapticFeedback.current
+    val hapticsOn = StepwiseTheme.settings.haptics
+    val boxSpec = tween<Color>(Motion.CHECK_BOX, easing = Motion.SmoothOut)
+    val fill by animateColorAsState(if (checked) colors.grass else colors.grass.copy(alpha = 0f), boxSpec, label = "check fill")
+    val ring by animateColorAsState(if (checked) colors.grass else colors.ink, boxSpec, label = "check ring")
     Box(
         modifier = modifier
             .size(44.dp)
-            .clip(CircleShape)
-            .clickable(role = Role.Checkbox, onClick = onToggle)
+            .pressClickable(CircleShape, role = Role.Checkbox, sound = if (checked) UiSound.ToggleOff else UiSound.Pop) {
+                if (hapticsOn) haptics.performHapticFeedback(if (checked) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
+                onToggle()
+            }
             .semantics {
                 contentDescription = label
                 stateDescription = if (checked) "Done" else "Not done"
@@ -84,16 +114,25 @@ fun CheckCircle(checked: Boolean, onToggle: () -> Unit, label: String, modifier:
             modifier = Modifier
                 .size(24.dp)
                 .clip(CircleShape)
-                .background(if (checked) colors.grass else Color.Transparent)
-                .border(1.5.dp, if (checked) colors.grass else colors.ink, CircleShape),
+                .background(fill)
+                .border(1.5.dp, ring, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            if (checked) Icon(StepIcons.Check, contentDescription = null, tint = colors.ink, modifier = Modifier.size(14.dp))
+            CheckMark(checked, colors.ink, Modifier.size(14.dp))
         }
     }
 }
 
-/** "Task Row": check circle, title, optional sub-line, chevron. */
+/** A done toggle waiting for its tick to finish drawing. */
+private class PendingToggle {
+    var job: Job? = null
+}
+
+/**
+ * "Task Row": check circle, title, optional sub-line, chevron.
+ * Ticking shows at once, but [onToggle] runs only after the check has drawn, so the row doesn't
+ * leave its list mid-animation. A second tap in that moment takes it back.
+ */
 @Composable
 fun TaskRow(
     title: String,
@@ -103,27 +142,65 @@ fun TaskRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     border: BorderStroke? = null,
+    sound: UiSound = UiSound.Navigate,
 ) {
     val colors = StepwiseTheme.colors
     val type = StepwiseTheme.type
+    val reduceMotion = StepwiseTheme.settings.reduceMotion
+    val scope = rememberCoroutineScope()
+    val latestToggle by rememberUpdatedState(onToggle)
+    val pending = remember { PendingToggle() }
+    var shownChecked by remember(checked) { mutableStateOf(checked) }
+    DisposableEffect(Unit) {
+        onDispose {
+            // Leaving the screen mid-tick commits it, so the tap is never lost.
+            if (pending.job != null) {
+                pending.job?.cancel()
+                pending.job = null
+                latestToggle()
+            }
+        }
+    }
+    fun toggle() {
+        pending.job?.let { waiting ->
+            waiting.cancel()
+            pending.job = null
+            shownChecked = checked
+            return
+        }
+        shownChecked = !checked
+        if (reduceMotion) {
+            onToggle()
+            return
+        }
+        pending.job = scope.launch {
+            delay(Motion.VERY_SLOW.toLong())
+            pending.job = null
+            latestToggle()
+        }
+    }
+    val titleColor by animateColorAsState(
+        if (shownChecked) colors.muted else colors.ink,
+        tween(Motion.QUICK, easing = Motion.SmoothOut),
+        label = "task title",
+    )
     Row(
         modifier = modifier
+            .pressClickable(CardShape, sound = sound, onClick = onClick)
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .clip(CardShape)
             .background(colors.surface)
             .then(if (border != null) Modifier.border(border, CardShape) else Modifier)
-            .clickable(role = Role.Button, onClick = onClick)
             .padding(start = 4.dp, end = 18.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CheckCircle(checked = checked, onToggle = onToggle, label = "Mark “$title” done")
+        CheckCircle(checked = shownChecked, onToggle = ::toggle, label = "Mark “$title” done")
         Spacer(Modifier.width(4.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 title,
                 style = type.bodyLargeMedium.copy(fontWeight = type.body.fontWeight),
-                color = if (checked) colors.muted else colors.ink,
+                color = titleColor,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -133,7 +210,76 @@ fun TaskRow(
     }
 }
 
-/** Segmented step progress: done = green, current = ink, rest = sandstone. */
+/**
+ * A numbered step circle: grass with a check when done, ink when current, outlined otherwise.
+ * Finishing a step fills it and draws the check while the number shrinks away; the current
+ * step grows to [currentSize].
+ */
+@Composable
+fun StepBubble(
+    number: Int,
+    done: Boolean,
+    current: Boolean,
+    modifier: Modifier = Modifier,
+    size: Dp = 28.dp,
+    currentSize: Dp = size,
+    borderWidth: Dp = 1.dp,
+) {
+    val colors = StepwiseTheme.colors
+    val reduceMotion = StepwiseTheme.settings.reduceMotion
+    val boxSpec = tween<Color>(Motion.CHECK_BOX, easing = Motion.SmoothOut)
+    val fill by animateColorAsState(
+        when {
+            done -> colors.grass
+            current -> colors.ink
+            else -> colors.surface
+        },
+        boxSpec,
+        label = "step fill",
+    )
+    val ring by animateColorAsState(
+        if (done || current) colors.hairline.copy(alpha = 0f) else colors.hairline,
+        boxSpec,
+        label = "step ring",
+    )
+    val numberColor by animateColorAsState(if (current) colors.onInk else colors.muted, boxSpec, label = "step number")
+    val diameter by animateDpAsState(
+        if (current && !done) currentSize else size,
+        if (reduceMotion) snap() else tween(Motion.FAST, easing = Motion.SmoothOut),
+        label = "step size",
+    )
+    val swap by animateFloatAsState(
+        if (done) 1f else 0f,
+        if (reduceMotion) snap() else tween(Motion.ICON, easing = Motion.Emphasized),
+        label = "step number swap",
+    )
+    val blur = with(LocalDensity.current) { Motion.BlurIcon.toPx() }
+    Box(
+        modifier = modifier
+            .size(diameter)
+            .clip(CircleShape)
+            .background(fill)
+            .border(borderWidth, ring, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "$number",
+            style = if (current && currentSize != size) StepwiseTheme.type.label else StepwiseTheme.type.caption,
+            color = numberColor,
+            modifier = Modifier.graphicsLayer {
+                val scale = 1f - (1f - Motion.ICON_SCALE) * swap
+                alpha = 1f - swap
+                scaleX = scale
+                scaleY = scale
+                val r = blur * swap
+                renderEffect = if (r > 0.5f) BlurEffect(r, r, TileMode.Decal) else null
+            },
+        )
+        CheckMark(done, colors.ink, Modifier.size(14.dp))
+    }
+}
+
+/** Segmented step progress: done = green, current = ink, rest = sandstone. Segments fade to their new colour. */
 @Composable
 fun SegmentedProgress(total: Int, done: Int, modifier: Modifier = Modifier, markCurrent: Boolean = true) {
     if (total <= 0 || !StepwiseTheme.settings.showProgressBars) return
@@ -145,11 +291,15 @@ fun SegmentedProgress(total: Int, done: Int, modifier: Modifier = Modifier, mark
         horizontalArrangement = Arrangement.spacedBy(if (total > 12) 2.dp else 4.dp),
     ) {
         repeat(total) { index ->
-            val color = when {
-                index < done -> colors.grass
-                index == done && markCurrent -> colors.ink
-                else -> colors.recessed
-            }
+            val color by animateColorAsState(
+                when {
+                    index < done -> colors.grass
+                    index == done && markCurrent -> colors.ink
+                    else -> colors.recessed
+                },
+                tween(Motion.FAST, easing = Motion.SmoothOut),
+                label = "segment",
+            )
             Box(Modifier.weight(1f).height(8.dp).clip(RoundedCornerShape(4.dp)).background(color))
         }
     }
@@ -193,15 +343,15 @@ fun ChoiceCard(
     iconTint: Color = StepwiseTheme.colors.ink,
     border: BorderStroke? = BorderStroke(1.dp, StepwiseTheme.colors.hairline),
     enabled: Boolean = true,
+    sound: UiSound = UiSound.Select,
 ) {
     val colors = StepwiseTheme.colors
     Row(
         modifier = modifier
+            .pressClickable(GroupShape, enabled = enabled, sound = sound, onClick = onClick)
             .fillMaxWidth()
-            .clip(GroupShape)
             .background(colors.surface)
             .then(if (border != null) Modifier.border(border, GroupShape) else Modifier)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -1,8 +1,13 @@
 package com.uxankit.stepwise.ui.focus
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,8 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,6 +50,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.uxankit.stepwise.data.AppGraph
 import com.uxankit.stepwise.data.model.Task
 import com.uxankit.stepwise.data.model.TaskList
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.sound.rememberUiSounds
 import com.uxankit.stepwise.ui.components.CardShape
 import com.uxankit.stepwise.ui.components.Chip
 import com.uxankit.stepwise.ui.components.DoneBadge
@@ -57,13 +64,18 @@ import com.uxankit.stepwise.ui.components.PrimaryCta
 import com.uxankit.stepwise.ui.components.ScreenScaffold
 import com.uxankit.stepwise.ui.components.SegmentedProgress
 import com.uxankit.stepwise.ui.components.ServiceCta
+import com.uxankit.stepwise.ui.components.StepBubble
 import com.uxankit.stepwise.ui.components.StepCard
 import com.uxankit.stepwise.ui.components.StepwiseSheet
+import com.uxankit.stepwise.ui.components.pageSlide
+import com.uxankit.stepwise.ui.components.pressClickable
+import com.uxankit.stepwise.ui.components.reveal
 import com.uxankit.stepwise.ui.requireUser
 import com.uxankit.stepwise.ui.task.EditableStep
 import com.uxankit.stepwise.ui.task.StepsEditor
 import com.uxankit.stepwise.ui.task.TaskState
 import com.uxankit.stepwise.ui.task.withDraft
+import com.uxankit.stepwise.ui.theme.Motion
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 
@@ -89,57 +101,75 @@ fun FocusScreen(
     val messages = AppGraph.messages
 
     val task = (state as? TaskState.Ready)?.task
+    val page: FocusPage? = doneInfo?.let { FocusPage.Done(it) } ?: task?.let { FocusPage.Step(it) }
+    val slide = with(LocalDensity.current) { Motion.DistanceBase.roundToPx() }
     when {
         state == TaskState.Loading -> Box(Modifier.fillMaxSize().background(StepwiseTheme.colors.canvas), Alignment.Center) {
             CircularProgressIndicator(color = StepwiseTheme.colors.ink)
         }
         state == TaskState.Missing -> LaunchedEffect(Unit) { onClose() }
-        doneInfo != null -> StepDoneContent(
-            info = doneInfo!!,
-            onboarding = onboarding,
-            isGuest = user.isGuest,
-            nextTaskId = vm.nextTaskId(),
-            onNextStep = { doneInfo = null },
-            onClose = onClose,
-            onSwitchTask = onSwitchTask,
-            onSaveProgress = onSaveProgress,
-            onFinishOnboarding = onFinishOnboarding,
-        )
-        task != null -> FocusContent(
-            task = task,
-            onboarding = onboarding,
-            onClose = onClose,
-            onOpenTask = onOpenTask,
-            onDone = {
-                val info = vm.done() ?: return@FocusContent
-                if (settings.haptics) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                if (settings.showStepDoneScreen || onboarding || info.taskDone) {
-                    doneInfo = info
-                    messages.showUndo("Step marked done") {
-                        vm.undoDone()
-                        doneInfo = null
-                    }
+        page != null -> AnimatedContent(
+            targetState = page,
+            // Only step ↔ done animates here; a task update inside a page just refreshes it.
+            contentKey = { it is FocusPage.Done },
+            transitionSpec = {
+                if (settings.reduceMotion) {
+                    fadeIn(tween(Motion.QUICK)) togetherWith fadeOut(tween(Motion.QUICK))
                 } else {
-                    messages.showUndo("Step ${info.stepNumber} done") { vm.undoDone() }
+                    pageSlide(forward = targetState is FocusPage.Done, slide)
                 }
             },
-            onSmaller = { showSmaller = true },
-            onSkip = {
-                val original = task
-                val next = vm.skip()
-                val where = when (original.list) {
-                    TaskList.Urgent -> "in Urgent"
-                    TaskList.Today -> "in Today"
-                    TaskList.Inbox -> "in your Inbox"
-                }
-                messages.showUndo("Skipped. It’s still $where.") { AppGraph.tasks.save(user.uid, original) }
-                if (next != null) onSwitchTask(next) else onClose()
-            },
-            onPause = {
-                vm.pause()
-                onPaused()
-            },
-        )
+            label = "focus page",
+        ) { shown ->
+            when (shown) {
+                is FocusPage.Done -> StepDoneContent(
+                    info = shown.info,
+                    onboarding = onboarding,
+                    isGuest = user.isGuest,
+                    nextTaskId = vm.nextTaskId(),
+                    onNextStep = { doneInfo = null },
+                    onClose = onClose,
+                    onSwitchTask = onSwitchTask,
+                    onSaveProgress = onSaveProgress,
+                    onFinishOnboarding = onFinishOnboarding,
+                )
+                is FocusPage.Step -> FocusContent(
+                    task = shown.task,
+                    onboarding = onboarding,
+                    onClose = onClose,
+                    onOpenTask = onOpenTask,
+                    onDone = {
+                        val info = vm.done() ?: return@FocusContent
+                        if (settings.haptics) haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                        if (settings.showStepDoneScreen || onboarding || info.taskDone) {
+                            doneInfo = info
+                            messages.showUndo("Step marked done") {
+                                vm.undoDone()
+                                doneInfo = null
+                            }
+                        } else {
+                            messages.showUndo("Step ${info.stepNumber} done") { vm.undoDone() }
+                        }
+                    },
+                    onSmaller = { showSmaller = true },
+                    onSkip = {
+                        val original = shown.task
+                        val next = vm.skip()
+                        val where = when (original.list) {
+                            TaskList.Urgent -> "in Urgent"
+                            TaskList.Today -> "in Today"
+                            TaskList.Inbox -> "in your Inbox"
+                        }
+                        messages.showUndo("Skipped. It’s still $where.") { AppGraph.tasks.save(user.uid, original) }
+                        if (next != null) onSwitchTask(next) else onClose()
+                    },
+                    onPause = {
+                        vm.pause()
+                        onPaused()
+                    },
+                )
+            }
+        }
     }
 
     if (showSmaller && task != null) {
@@ -150,6 +180,12 @@ fun FocusScreen(
             onDismiss = { showSmaller = false },
         )
     }
+}
+
+/** What Focus Mode shows. Each page keeps its own data while it animates out. */
+private sealed interface FocusPage {
+    data class Step(val task: Task) : FocusPage
+    data class Done(val info: StepDoneInfo) : FocusPage
 }
 
 @Composable
@@ -165,18 +201,21 @@ private fun FocusContent(
 ) {
     val colors = StepwiseTheme.colors
     var menu by remember { mutableStateOf(false) }
-    val current = task.currentStep
+    val reduceMotion = StepwiseTheme.settings.reduceMotion
+    val slide = with(LocalDensity.current) { Motion.DistanceBase.roundToPx() }
+    val sounds = rememberUiSounds()
     ScreenScaffold(
         bottom = {
             MessageHost()
-            ServiceCta("Done", onClick = onDone)
+            // Finishing a step is the moment worth a chord.
+            ServiceCta("Done", onClick = onDone, sound = UiSound.Success)
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                RoundAction(StepIcons.BreakDown, "Make it smaller", onSmaller)
-                RoundAction(StepIcons.Skip, "Skip", onSkip)
-                RoundAction(StepIcons.Pause, "Pause", onPause)
+                RoundAction(StepIcons.BreakDown, "Make it smaller", UiSound.Open, onSmaller)
+                RoundAction(StepIcons.Skip, "Skip", UiSound.PressSoft, onSkip)
+                RoundAction(StepIcons.Pause, "Pause", UiSound.PressSoft, onPause)
             }
         },
     ) {
@@ -184,35 +223,64 @@ private fun FocusContent(
             NavHeader(
                 overline = "Focus Mode",
                 title = task.title,
-                leading = HeaderAction(StepIcons.Close, "Close Focus Mode", onClose),
-                trailing = HeaderAction(StepIcons.More, "More") { menu = true },
+                leading = HeaderAction(StepIcons.Close, "Close Focus Mode", UiSound.Close, onClose),
+                trailing = HeaderAction(StepIcons.More, "More", UiSound.Open) { menu = true },
             )
             Box(Modifier.align(Alignment.TopEnd).padding(top = 44.dp)) {
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = colors.surface) {
-                    DropdownMenuItem(text = { Text("Open task page") }, onClick = { menu = false; onOpenTask() })
+                DropdownMenu(
+                    expanded = menu,
+                    onDismissRequest = {
+                        sounds.play(UiSound.Close)
+                        menu = false
+                    },
+                    containerColor = colors.surface,
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Open task page") },
+                        onClick = {
+                            sounds.play(UiSound.Select)
+                            menu = false
+                            onOpenTask()
+                        },
+                    )
                 }
             }
         }
         StepTrack(task)
-        Column(Modifier.padding(horizontal = 4.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (task.hasSteps && current != null) {
-                Text("Step ${task.currentStepIndex + 1} of ${task.steps.size}", style = StepwiseTheme.type.label, color = colors.muted)
-                HeroText(current.title)
-                task.nextStepAfterCurrent?.let { next ->
-                    MetaLine(StepIcons.Flag, "Then: ${next.title}")
+        // Step 1 → step 2: the old step slides out and the next one slides in (page side-by-side).
+        AnimatedContent(
+            targetState = task,
+            contentKey = { it.currentStep?.id },
+            transitionSpec = {
+                if (reduceMotion) {
+                    fadeIn(tween(Motion.QUICK)) togetherWith fadeOut(tween(Motion.QUICK))
+                } else {
+                    pageSlide(forward = targetState.currentStepIndex >= initialState.currentStepIndex, slide)
                 }
-            } else {
-                Text(
-                    when (task.list) {
-                        TaskList.Urgent -> "Urgent"
-                        TaskList.Today -> "From Today"
-                        TaskList.Inbox -> "From your Inbox"
-                    },
-                    style = StepwiseTheme.type.label,
-                    color = colors.muted,
-                )
-                HeroText(task.title)
-                MetaLine(StepIcons.Check, "One step — no breakdown needed")
+            },
+            label = "focus step",
+        ) { shown ->
+            val current = shown.currentStep
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (shown.hasSteps && current != null) {
+                    Text("Step ${shown.currentStepIndex + 1} of ${shown.steps.size}", style = StepwiseTheme.type.label, color = colors.muted)
+                    HeroText(current.title)
+                    shown.nextStepAfterCurrent?.let { next ->
+                        MetaLine(StepIcons.Flag, "Then: ${next.title}")
+                    }
+                } else {
+                    Text(
+                        when (shown.list) {
+                            TaskList.Urgent -> "Urgent"
+                            TaskList.Today -> "From Today"
+                            TaskList.Inbox -> "From your Inbox"
+                        },
+                        style = StepwiseTheme.type.label,
+                        color = colors.muted,
+                    )
+                    HeroText(shown.title)
+                    MetaLine(StepIcons.Check, "One step — no breakdown needed")
+                }
             }
         }
         if (onboarding) {
@@ -266,47 +334,32 @@ private fun StepTrack(task: Task) {
     ) {
         task.steps.forEachIndexed { index, step ->
             if (index > 0) {
-                Box(
-                    Modifier.weight(1f).height(2.dp).clip(CircleShape)
-                        .background(if (task.steps[index - 1].done) colors.grass else colors.hairline),
+                val line by animateColorAsState(
+                    if (task.steps[index - 1].done) colors.grass else colors.hairline,
+                    tween(Motion.FAST, easing = Motion.SmoothOut),
+                    label = "track line",
                 )
+                Box(Modifier.weight(1f).height(2.dp).clip(CircleShape).background(line))
             }
-            val isCurrent = index == currentIndex
-            Box(
-                modifier = Modifier
-                    .size(if (isCurrent) 36.dp else 28.dp)
-                    .clip(CircleShape)
-                    .background(
-                        when {
-                            step.done -> colors.grass
-                            isCurrent -> colors.ink
-                            else -> colors.surface
-                        },
-                    )
-                    .then(if (!step.done && !isCurrent) Modifier.border(1.5.dp, colors.hairline, CircleShape) else Modifier)
-                    .clearAndSetSemantics { },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (step.done) {
-                    Icon(StepIcons.Check, contentDescription = null, tint = colors.ink, modifier = Modifier.size(14.dp))
-                } else {
-                    Text(
-                        "${index + 1}",
-                        style = if (isCurrent) StepwiseTheme.type.label else StepwiseTheme.type.caption,
-                        color = if (isCurrent) colors.onInk else colors.muted,
-                    )
-                }
-            }
+            StepBubble(
+                number = index + 1,
+                done = step.done,
+                current = index == currentIndex,
+                size = 28.dp,
+                currentSize = 36.dp,
+                borderWidth = 1.5.dp,
+                modifier = Modifier.clearAndSetSemantics { },
+            )
         }
     }
 }
 
 @Composable
-private fun RoundAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun RoundAction(icon: ImageVector, label: String, sound: UiSound, onClick: () -> Unit) {
     val colors = StepwiseTheme.colors
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clip(CardShape).clickable(role = Role.Button, onClick = onClick).padding(4.dp),
+        modifier = Modifier.pressClickable(CardShape, sound = sound, onClick = onClick).padding(4.dp),
     ) {
         Box(
             Modifier.size(56.dp).clip(CircleShape).background(colors.surface).border(1.dp, colors.hairline, CircleShape),
@@ -368,17 +421,27 @@ private fun StepDoneContent(
             }
         },
     ) {
-        NavHeader(title = "", leading = HeaderAction(StepIcons.Close, "Close", onClose))
+        NavHeader(title = "", leading = HeaderAction(StepIcons.Close, "Close", UiSound.Close, onClose))
+        // The badge plays its success check; the words and cards rise in behind it, one block at a time.
         DoneBadge(Modifier.align(Alignment.CenterHorizontally))
         Text(
             title,
             style = StepwiseTheme.type.hero.copy(fontSize = StepwiseTheme.type.hero.fontSize * 0.8f),
             color = colors.ink,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().reveal(0, Motion.MICRO, delay = Motion.MICRO),
         )
-        Text(subtitle, style = StepwiseTheme.type.body, color = colors.muted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        StepCard(contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp)) {
+        Text(
+            subtitle,
+            style = StepwiseTheme.type.body,
+            color = colors.muted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().reveal(1, Motion.MICRO, delay = Motion.MICRO),
+        )
+        StepCard(
+            Modifier.reveal(2, Motion.MICRO, delay = Motion.MICRO),
+            contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(info.taskTitle, style = StepwiseTheme.type.label, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
@@ -387,7 +450,7 @@ private fun StepDoneContent(
             SegmentedProgress(total = info.totalSteps, done = info.stepsDone, markCurrent = false)
         }
         if (onboarding && isGuest) {
-            StepCard(shape = GroupShape) {
+            StepCard(Modifier.reveal(3, Motion.MICRO, delay = Motion.MICRO), shape = GroupShape) {
                 Row(verticalAlignment = Alignment.Top) {
                     Box(Modifier.size(32.dp).clip(CircleShape).background(colors.canvas), contentAlignment = Alignment.Center) {
                         Icon(StepIcons.Lock, contentDescription = null, tint = colors.ink, modifier = Modifier.size(16.dp))
@@ -404,7 +467,7 @@ private fun StepDoneContent(
                 }
             }
         } else if (!info.taskDone && info.nextStepTitle != null) {
-            StepCard(shape = GroupShape, spacing = 4) {
+            StepCard(Modifier.reveal(3, Motion.MICRO, delay = Motion.MICRO), shape = GroupShape, spacing = 4) {
                 Text("Up next · Step ${info.nextStepNumber}", style = StepwiseTheme.type.small, color = colors.muted)
                 Text(info.nextStepTitle, style = StepwiseTheme.type.bodyLargeMedium, color = colors.ink)
             }
@@ -435,6 +498,7 @@ private fun MakeSmallerSheet(stepNumber: Int, stepTitle: String, onSave: (List<S
         ServiceCta(
             "Save and start $stepNumber.1",
             enabled = all.isNotEmpty(),
+            sound = UiSound.Save,
             onClick = {
                 onSave(all.map { it.title })
                 onDismiss()

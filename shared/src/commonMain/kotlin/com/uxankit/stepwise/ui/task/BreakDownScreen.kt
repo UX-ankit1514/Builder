@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.uxankit.stepwise.sound.UiSound
 import com.uxankit.stepwise.ui.components.HeaderAction
 import com.uxankit.stepwise.ui.components.NavHeader
 import com.uxankit.stepwise.ui.components.ScreenScaffold
@@ -51,6 +52,7 @@ fun BreakDownScreen(taskId: String, onClose: () -> Unit) {
                     else -> "Save ${toSave.size} steps"
                 },
                 enabled = toSave.isNotEmpty() || (task?.hasSteps == true),
+                sound = UiSound.Save,
                 onClick = {
                     vm.saveSteps(toSave.toStepPairs())
                     onClose()
@@ -58,7 +60,7 @@ fun BreakDownScreen(taskId: String, onClose: () -> Unit) {
             )
         },
     ) {
-        NavHeader(title = "Break it down", leading = HeaderAction(StepIcons.Close, "Close", onClose))
+        NavHeader(title = "Break it down", leading = HeaderAction(StepIcons.Close, "Close", UiSound.Close, onClose))
         Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(task?.title.orEmpty(), style = StepwiseTheme.type.title, color = colors.ink)
             Text(
@@ -67,6 +69,9 @@ fun BreakDownScreen(taskId: String, onClose: () -> Unit) {
                 color = colors.muted,
             )
         }
-        StepsEditor(steps = current, onChange = { steps = it }, draft = draft, onDraftChange = { draft = it })
+        // Wait for the saved steps, so the editor treats them as already there rather than newly added.
+        if (steps != null) {
+            StepsEditor(steps = current, onChange = { steps = it }, draft = draft, onDraftChange = { draft = it })
+        }
     }
 }

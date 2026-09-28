@@ -1,6 +1,5 @@
 package com.uxankit.stepwise.ui.onboarding
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,14 +24,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.uxankit.stepwise.data.AppGraph
 import com.uxankit.stepwise.data.model.Limits
 import com.uxankit.stepwise.data.model.TaskList
 import com.uxankit.stepwise.domain.Planner
+import com.uxankit.stepwise.sound.UiSound
 import com.uxankit.stepwise.ui.account.AccountViewModel
 import com.uxankit.stepwise.ui.components.BrandMark
 import com.uxankit.stepwise.ui.components.Chip
@@ -46,12 +44,15 @@ import com.uxankit.stepwise.ui.components.ServiceCta
 import com.uxankit.stepwise.ui.components.StepsIllustration
 import com.uxankit.stepwise.ui.components.StepwiseTextField
 import com.uxankit.stepwise.ui.components.TextLink
+import com.uxankit.stepwise.ui.components.pressClickable
+import com.uxankit.stepwise.ui.components.reveal
 import com.uxankit.stepwise.ui.rememberGoogleSignIn
 import com.uxankit.stepwise.ui.requireUser
 import com.uxankit.stepwise.ui.task.EditableStep
 import com.uxankit.stepwise.ui.task.StepsEditor
 import com.uxankit.stepwise.ui.task.toStepPairs
 import com.uxankit.stepwise.ui.task.withDraft
+import com.uxankit.stepwise.ui.theme.Motion
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 import kotlinx.coroutines.flow.map
@@ -74,14 +75,16 @@ fun WelcomeScreen() {
             }
         },
     ) {
-        BrandMark(Modifier.padding(top = 8.dp, start = 4.dp))
-        StepsIllustration(Modifier.fillMaxWidth(0.77f).align(Alignment.CenterHorizontally).padding(top = 24.dp))
+        // First impression: brand, illustration, headline and promise rise in one after another.
+        BrandMark(Modifier.padding(top = 8.dp, start = 4.dp).reveal(0, Motion.MICRO))
+        StepsIllustration(Modifier.fillMaxWidth(0.77f).align(Alignment.CenterHorizontally).padding(top = 24.dp).reveal(1, Motion.MICRO))
         Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            HeroText("Stop organising. Start the next thing.")
+            HeroText("Stop organising. Start the next thing.", Modifier.reveal(2, Motion.MICRO))
             Text(
                 "Stepwise turns what you’ve been avoiding into small steps — one at a time.",
                 style = StepwiseTheme.type.bodyLarge,
                 color = colors.muted,
+                modifier = Modifier.reveal(3, Motion.MICRO),
             )
         }
     }
@@ -116,8 +119,8 @@ fun FirstTaskScreen(onNext: (String) -> Unit) {
     ) {
         PageDots(3, 0, Modifier.align(Alignment.CenterHorizontally).padding(top = 18.dp))
         Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("What have you been putting off?", style = StepwiseTheme.type.title, color = colors.ink)
-            Text("Just one thing. You can add more later.", style = StepwiseTheme.type.body, color = colors.muted)
+            Text("What have you been putting off?", style = StepwiseTheme.type.title, color = colors.ink, modifier = Modifier.reveal(0))
+            Text("Just one thing. You can add more later.", style = StepwiseTheme.type.body, color = colors.muted, modifier = Modifier.reveal(1))
         }
         StepwiseTextField(
             value = title,
@@ -131,7 +134,7 @@ fun FirstTaskScreen(onNext: (String) -> Unit) {
             suggestions.forEach { suggestion ->
                 Chip(
                     suggestion,
-                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) { title = suggestion },
+                    modifier = Modifier.pressClickable(RoundedCornerShape(10.dp), sound = UiSound.PressSoft) { title = suggestion },
                 )
             }
         }
@@ -164,15 +167,16 @@ fun FirstStepsScreen(taskId: String, onBack: () -> Unit, onStart: () -> Unit) {
         },
     ) {
         Box(Modifier.fillMaxWidth()) {
-            CircleIconButton(StepIcons.ChevronLeft, contentDescription = "Back", onClick = onBack)
+            CircleIconButton(StepIcons.ChevronLeft, contentDescription = "Back", onClick = onBack, sound = UiSound.Navigate)
             PageDots(3, 1, Modifier.align(Alignment.Center))
         }
         Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Let’s make it smaller", style = StepwiseTheme.type.title, color = colors.ink)
+            Text("Let’s make it smaller", style = StepwiseTheme.type.title, color = colors.ink, modifier = Modifier.reveal(0))
             Text(
                 "“${task?.title.orEmpty()}” — what’s the first tiny action?",
                 style = StepwiseTheme.type.body,
                 color = colors.muted,
+                modifier = Modifier.reveal(1),
             )
         }
         StepsEditor(steps = steps, onChange = { steps = it }, draft = draft, onDraftChange = { draft = it }, showHint = false)
@@ -194,11 +198,12 @@ fun SignInScreen(fromOnboarding: Boolean, onDone: () -> Unit, onNotNow: () -> Un
             TextLink("Not now", onClick = onNotNow)
         }
         Column(Modifier.padding(horizontal = 4.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Save your progress", style = StepwiseTheme.type.title, color = colors.ink)
+            Text("Save your progress", style = StepwiseTheme.type.title, color = colors.ink, modifier = Modifier.reveal(0))
             Text(
                 "Sign in to keep your tasks and steps synced. You can keep using Stepwise without an account.",
                 style = StepwiseTheme.type.body,
                 color = colors.muted,
+                modifier = Modifier.reveal(1),
             )
         }
         PrimaryCta(text = "Continue with Google", onClick = signIn, fillWidth = true, tall = true, busy = vm.busy)

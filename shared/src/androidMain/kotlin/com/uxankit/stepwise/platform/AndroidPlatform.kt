@@ -14,11 +14,13 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.uxankit.stepwise.data.GoogleTokens
+import com.uxankit.stepwise.sound.AndroidUiSounds
 import java.io.File
 
 fun androidPlatform(activity: Activity, webClientId: String?): Platform = Platform(
     googleSignIn = AndroidGoogleSignIn(activity, webClientId),
     fileSharer = AndroidFileSharer(activity),
+    sounds = AndroidUiSounds.get(activity),
 )
 
 /**

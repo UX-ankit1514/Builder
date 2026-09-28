@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.uxankit.stepwise.platform.LocalPlatform
 import com.uxankit.stepwise.ui.account.AccountViewModel
+import com.uxankit.stepwise.sound.UiSound
 import com.uxankit.stepwise.ui.components.Avatar
 import com.uxankit.stepwise.ui.components.ErrorNote
 import com.uxankit.stepwise.ui.components.GroupDivider
@@ -61,7 +62,7 @@ fun SettingsScreen(
     val colors = StepwiseTheme.colors
 
     ScreenScaffold(bodySpacing = 12, bottom = { MessageHost() }) {
-        NavHeader(title = "Settings", leading = HeaderAction(StepIcons.ChevronLeft, "Back", onBack))
+        NavHeader(title = "Settings", leading = HeaderAction(StepIcons.ChevronLeft, "Back", onClick = onBack))
 
         StepCard(
             onClick = if (user.isGuest) onSignIn else ({ onAccount(false) }),
@@ -112,6 +113,7 @@ fun SettingsScreen(
                 title = if (vm.exporting) "Preparing your file…" else "Export data",
                 icon = StepIcons.Download,
                 enabled = !vm.exporting,
+                sound = UiSound.Copy,
                 onClick = { vm.export(platform.fileSharer) },
             )
             if (!user.isGuest) {
@@ -121,6 +123,7 @@ fun SettingsScreen(
                     icon = StepIcons.Logout,
                     enabled = !accountVm.busy,
                     showChevron = false,
+                    sound = UiSound.PressOutline,
                     onClick = { accountVm.signOut { platform.googleSignIn.signOut() } },
                 )
             }
@@ -143,7 +146,7 @@ fun AccessibilityScreen(onBack: () -> Unit) {
     val settings by vm.settings.collectAsState()
 
     ScreenScaffold(bodySpacing = 12) {
-        NavHeader(title = "Accessibility", leading = HeaderAction(StepIcons.ChevronLeft, "Back", onBack))
+        NavHeader(title = "Accessibility", leading = HeaderAction(StepIcons.ChevronLeft, "Back", onClick = onBack))
         SettingsGroup {
             SettingsRow(title = "Text size", value = "Follows your phone")
             GroupDivider()
@@ -200,7 +203,7 @@ fun AccountScreen(openDelete: Boolean, onBack: () -> Unit, onSignIn: () -> Unit)
     }
 
     ScreenScaffold(bodySpacing = 12, bottom = { MessageHost() }) {
-        NavHeader(title = "Account", leading = HeaderAction(StepIcons.ChevronLeft, "Back", onBack))
+        NavHeader(title = "Account", leading = HeaderAction(StepIcons.ChevronLeft, "Back", onClick = onBack))
         SettingsGroup {
             SettingsRow(title = "Email", icon = StepIcons.Mail, value = if (user.isGuest) "Not signed in" else user.email.orEmpty())
             GroupDivider()
@@ -223,6 +226,7 @@ fun AccountScreen(openDelete: Boolean, onBack: () -> Unit, onSignIn: () -> Unit)
                 onClick = { settingsVm.export(platform.fileSharer) },
                 fillWidth = true,
                 busy = settingsVm.exporting,
+                sound = UiSound.Copy,
             )
         }
 
@@ -246,6 +250,7 @@ fun AccountScreen(openDelete: Boolean, onBack: () -> Unit, onSignIn: () -> Unit)
                 if (user.isGuest) "Delete my data" else "Delete account",
                 onClick = { confirmDelete = true },
                 color = colors.ink,
+                sound = UiSound.Open,
             )
         }
     }
@@ -258,16 +263,29 @@ fun AccountScreen(openDelete: Boolean, onBack: () -> Unit, onSignIn: () -> Unit)
                 style = StepwiseTheme.type.small,
                 color = colors.muted,
             )
-            PrimaryCta("Export my data first", onClick = { settingsVm.export(platform.fileSharer) }, fillWidth = true, tall = true, busy = settingsVm.exporting)
+            PrimaryCta(
+                "Export my data first",
+                onClick = { settingsVm.export(platform.fileSharer) },
+                fillWidth = true,
+                tall = true,
+                busy = settingsVm.exporting,
+                sound = UiSound.Copy,
+            )
             ErrorNote(accountVm.error)
             ServiceCta(
                 if (user.isGuest) "Delete my data" else "Delete account",
                 busy = accountVm.busy,
+                sound = UiSound.Unsave,
                 onClick = {
                     if (user.isGuest) accountVm.deleteAccount(null) { } else reauthAndDelete()
                 },
             )
-            TextLink("Keep my account", onClick = { confirmDelete = false }, modifier = Modifier.align(Alignment.CenterHorizontally))
+            TextLink(
+                "Keep my account",
+                onClick = { confirmDelete = false },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                sound = UiSound.Close,
+            )
         }
     }
 }

@@ -18,6 +18,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.uxankit.stepwise.data.model.Limits
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.sound.rememberUiSounds
 import com.uxankit.stepwise.ui.components.ServiceCta
 import com.uxankit.stepwise.ui.components.StepwiseSheet
 import com.uxankit.stepwise.ui.components.StepwiseTextField
@@ -29,6 +31,7 @@ import com.uxankit.stepwise.ui.theme.StepwiseTheme
 fun QuickAddSheet(onSave: (String) -> Unit, onDismiss: () -> Unit) {
     var title by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
+    val sounds = rememberUiSounds()
     fun save() {
         if (title.isNotBlank()) {
             onSave(title)
@@ -41,7 +44,10 @@ fun QuickAddSheet(onSave: (String) -> Unit, onDismiss: () -> Unit) {
             onValueChange = { title = it },
             placeholder = "What’s on your mind?",
             maxLength = Limits.TITLE_MAX,
-            onImeAction = ::save,
+            onImeAction = {
+                if (title.isNotBlank()) sounds.play(UiSound.Save)
+                save()
+            },
             accessibilityLabel = "Task name",
             modifier = Modifier.focusRequester(focus),
         )
@@ -50,7 +56,7 @@ fun QuickAddSheet(onSave: (String) -> Unit, onDismiss: () -> Unit) {
             Spacer(Modifier.width(6.dp))
             Text("Just the name. It goes to your Inbox.", style = StepwiseTheme.type.small, color = StepwiseTheme.colors.muted)
         }
-        ServiceCta(text = "Save", onClick = ::save, enabled = title.isNotBlank())
+        ServiceCta(text = "Save", onClick = ::save, enabled = title.isNotBlank(), sound = UiSound.Save)
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }

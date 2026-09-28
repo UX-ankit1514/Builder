@@ -1,7 +1,5 @@
 package com.uxankit.stepwise
 
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -30,6 +29,8 @@ import com.uxankit.stepwise.data.model.UserSettings
 import com.uxankit.stepwise.platform.LocalPlatform
 import com.uxankit.stepwise.platform.Platform
 import com.uxankit.stepwise.ui.LocalSessionUser
+import com.uxankit.stepwise.ui.components.pageEnter
+import com.uxankit.stepwise.ui.components.pageExit
 import com.uxankit.stepwise.ui.focus.FocusScreen
 import com.uxankit.stepwise.ui.home.HomeScreen
 import com.uxankit.stepwise.ui.navigation.AccessibilityRoute
@@ -52,6 +53,7 @@ import com.uxankit.stepwise.ui.settings.AccountScreen
 import com.uxankit.stepwise.ui.settings.SettingsScreen
 import com.uxankit.stepwise.ui.task.BreakDownScreen
 import com.uxankit.stepwise.ui.task.TaskScreen
+import com.uxankit.stepwise.ui.theme.Motion
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -106,15 +108,18 @@ private fun Splash() {
 private fun StepwiseNavHost(user: SessionUser?, start: Any) {
     val nav = rememberNavController()
     val reduceMotion = StepwiseTheme.settings.reduceMotion
+    // Page side-by-side: forward slides in from the right, back from the left. Reduce motion fades only.
+    val slide = with(LocalDensity.current) { Motion.DistanceBase.roundToPx() }
+    val fade = tween<Float>(Motion.FAST, easing = Motion.SmoothOut)
     CompositionLocalProvider(LocalSessionUser provides user) {
         NavHost(
             navController = nav,
             startDestination = start,
             modifier = Modifier.fillMaxSize().background(StepwiseTheme.colors.canvas),
-            enterTransition = { if (reduceMotion) EnterTransition.None else fadeIn(tween(220)) },
-            exitTransition = { if (reduceMotion) ExitTransition.None else fadeOut(tween(180)) },
-            popEnterTransition = { if (reduceMotion) EnterTransition.None else fadeIn(tween(220)) },
-            popExitTransition = { if (reduceMotion) ExitTransition.None else fadeOut(tween(180)) },
+            enterTransition = { if (reduceMotion) fadeIn(fade) else pageEnter(forward = true, slide) },
+            exitTransition = { if (reduceMotion) fadeOut(fade) else pageExit(forward = true, slide) },
+            popEnterTransition = { if (reduceMotion) fadeIn(fade) else pageEnter(forward = false, slide) },
+            popExitTransition = { if (reduceMotion) fadeOut(fade) else pageExit(forward = false, slide) },
         ) {
             // Flow 1 · Onboarding
             composable<WelcomeRoute> { WelcomeScreen() }

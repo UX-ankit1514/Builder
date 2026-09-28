@@ -32,6 +32,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.sound.rememberUiSounds
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 
@@ -44,11 +46,17 @@ fun TabHeader(overline: String, title: String, onProfile: () -> Unit, modifier: 
             Text(overline, style = StepwiseTheme.type.body, color = colors.muted)
             Text(title, style = StepwiseTheme.type.title, color = colors.ink, modifier = Modifier.semantics { heading() })
         }
-        CircleIconButton(StepIcons.User, contentDescription = "Settings", onClick = onProfile)
+        CircleIconButton(StepIcons.User, contentDescription = "Settings", onClick = onProfile, sound = UiSound.Navigate)
     }
 }
 
-data class HeaderAction(val icon: ImageVector, val label: String, val onClick: () -> Unit)
+/** A circle button in a [NavHeader]. Back navigates; close and "more" pass their own [sound]. */
+data class HeaderAction(
+    val icon: ImageVector,
+    val label: String,
+    val sound: UiSound = UiSound.Navigate,
+    val onClick: () -> Unit,
+)
 
 /** Centered title with optional circle buttons on both sides (Task, Focus Mode, Settings...). */
 @Composable
@@ -62,7 +70,7 @@ fun NavHeader(
     val colors = StepwiseTheme.colors
     Row(modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(44.dp)) {
-            if (leading != null) CircleIconButton(leading.icon, leading.label, leading.onClick)
+            if (leading != null) CircleIconButton(leading.icon, leading.label, leading.onClick, sound = leading.sound)
         }
         Column(Modifier.weight(1f).padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (overline != null) Text(overline, style = StepwiseTheme.type.caption, color = colors.muted)
@@ -77,7 +85,7 @@ fun NavHeader(
             )
         }
         Box(Modifier.size(44.dp)) {
-            if (trailing != null) CircleIconButton(trailing.icon, trailing.label, trailing.onClick)
+            if (trailing != null) CircleIconButton(trailing.icon, trailing.label, trailing.onClick, sound = trailing.sound)
         }
     }
 }
@@ -97,7 +105,7 @@ fun SectionHeader(
             Spacer(Modifier.width(8.dp))
         }
         Text(title, style = StepwiseTheme.type.section, color = colors.ink, modifier = Modifier.weight(1f).semantics { heading() })
-        if (trailing != null) Text(trailing, style = StepwiseTheme.type.body, color = colors.muted)
+        if (trailing != null) SwapText(trailing, style = StepwiseTheme.type.body, color = colors.muted)
     }
 }
 
@@ -152,14 +160,25 @@ fun SettingsRow(
     value: String? = null,
     enabled: Boolean = true,
     showChevron: Boolean = true,
+    sound: UiSound = UiSound.Navigate,
     onClick: (() -> Unit)? = null,
 ) {
     val colors = StepwiseTheme.colors
+    val sounds = rememberUiSounds()
     Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
-            .then(if (onClick != null && enabled) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .then(
+                if (onClick != null && enabled) {
+                    Modifier.clickable(role = Role.Button) {
+                        sounds.play(sound)
+                        onClick()
+                    }
+                } else {
+                    Modifier
+                },
+            )
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -191,10 +210,15 @@ fun SettingsToggleRow(
     subtitle: String? = null,
 ) {
     val colors = StepwiseTheme.colors
+    val sounds = rememberUiSounds()
+    val toggle = { on: Boolean ->
+        sounds.play(if (on) UiSound.ToggleOn else UiSound.ToggleOff)
+        onCheckedChange(on)
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(role = Role.Switch) { onCheckedChange(!checked) }
+            .clickable(role = Role.Switch) { toggle(!checked) }
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -208,7 +232,7 @@ fun SettingsToggleRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = toggle,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = colors.grass,

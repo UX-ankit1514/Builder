@@ -15,9 +15,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.uxankit.stepwise.data.model.Task
 import com.uxankit.stepwise.domain.Planner
+import com.uxankit.stepwise.sound.UiSound
 import com.uxankit.stepwise.ui.components.StepCard
 import com.uxankit.stepwise.ui.components.TabHeader
 import com.uxankit.stepwise.ui.components.TaskRow
+import com.uxankit.stepwise.ui.components.animateRow
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 import com.uxankit.stepwise.util.DateText
 
@@ -42,14 +44,14 @@ fun InboxTab(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
+        item(key = "header") {
             TabHeader(
                 overline = if (inbox.size == 1) "1 saved task" else "${inbox.size} saved tasks",
                 title = "Inbox",
                 onProfile = onProfile,
             )
         }
-        item {
+        item(key = "hint") {
             Text(
                 "Everything you’ve saved. Tap a task to plan it.",
                 style = StepwiseTheme.type.small,
@@ -58,8 +60,8 @@ fun InboxTab(
             )
         }
         if (inbox.isEmpty()) {
-            item {
-                StepCard {
+            item(key = "empty") {
+                StepCard(animateRow()) {
                     Text("Your Inbox is empty", style = StepwiseTheme.type.bodyLargeMedium, color = colors.ink)
                     Text("Tap + to capture anything on your mind. Only the name is needed.", style = StepwiseTheme.type.body, color = colors.muted)
                 }
@@ -72,6 +74,8 @@ fun InboxTab(
                 checked = false,
                 onToggle = { onToggleDone(task, true) },
                 onClick = { onPlan(task) },
+                modifier = animateRow(),
+                sound = UiSound.Open, // opens the plan sheet
             )
         }
     }

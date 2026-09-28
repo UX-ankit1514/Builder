@@ -31,10 +31,12 @@ import androidx.compose.ui.unit.dp
 import com.uxankit.stepwise.data.model.Task
 import com.uxankit.stepwise.domain.Planner
 import com.uxankit.stepwise.ui.components.CardShape
+import com.uxankit.stepwise.ui.components.PopNumber
 import com.uxankit.stepwise.ui.components.SectionHeader
 import com.uxankit.stepwise.ui.components.SegmentedProgress
 import com.uxankit.stepwise.ui.components.StepCard
 import com.uxankit.stepwise.ui.components.TabHeader
+import com.uxankit.stepwise.ui.components.animateRow
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 import com.uxankit.stepwise.util.DateText
 import com.uxankit.stepwise.util.Time
@@ -58,26 +60,26 @@ fun ProgressTab(tasks: List<Task>, onProfile: () -> Unit, onOpenTask: (String) -
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { TabHeader(overline = "This week", title = "Progress", onProfile = onProfile) }
-        item {
+        item(key = "header") { TabHeader(overline = "This week", title = "Progress", onProfile = onProfile) }
+        item(key = "stats") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatCard(stepsThisWeek, if (stepsThisWeek == 1) "Step completed" else "Steps completed", colors.surface, Modifier.weight(1f))
                 StatCard(goals.size, if (goals.size == 1) "Active goal" else "Active goals", colors.grass, Modifier.weight(1f))
             }
         }
-        item { SectionHeader("Active goals", Modifier.padding(top = 8.dp)) }
+        item(key = "goals-header") { SectionHeader("Active goals", animateRow().padding(top = 8.dp)) }
         if (goals.isEmpty()) {
-            item {
+            item(key = "goals-empty") {
                 Text(
                     "Break a big task into steps and it shows up here.",
                     style = StepwiseTheme.type.body,
                     color = colors.muted,
-                    modifier = Modifier.padding(horizontal = 4.dp),
+                    modifier = animateRow().padding(horizontal = 4.dp),
                 )
             }
         }
         items(goals, key = { it.id }) { task ->
-            StepCard(onClick = { onOpenTask(task.id) }, contentPadding = PaddingValues(horizontal = 22.dp, vertical = 18.dp)) {
+            StepCard(animateRow(), onClick = { onOpenTask(task.id) }, contentPadding = PaddingValues(horizontal = 22.dp, vertical = 18.dp)) {
                 Row(verticalAlignment = Alignment.Top) {
                     Text(
                         task.title,
@@ -92,9 +94,9 @@ fun ProgressTab(tasks: List<Task>, onProfile: () -> Unit, onOpenTask: (String) -
                 SegmentedProgress(total = task.steps.size, done = task.stepsDone, markCurrent = false)
             }
         }
-        item { SectionHeader("History", Modifier.padding(top = 8.dp)) }
-        item {
-            StepCard(spacing = 14) {
+        item(key = "history-header") { SectionHeader("History", animateRow().padding(top = 8.dp)) }
+        item(key = "history") {
+            StepCard(animateRow(), spacing = 14) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     week.forEach { day ->
                         val count = Planner.stepsDoneOn(tasks, day)
@@ -137,8 +139,8 @@ private fun StatCard(value: Int, label: String, color: Color, modifier: Modifier
             .padding(horizontal = 22.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.Bottom,
     ) {
-        Text(
-            "$value",
+        PopNumber(
+            value,
             style = StepwiseTheme.type.hero.copy(fontSize = StepwiseTheme.type.hero.fontSize * 0.9f),
             color = colors.ink,
         )

@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.uxankit.stepwise.sound.UiSound
+import com.uxankit.stepwise.sound.rememberUiSounds
 import com.uxankit.stepwise.ui.theme.StepIcons
 import com.uxankit.stepwise.ui.theme.StepwiseTheme
 
@@ -38,8 +40,13 @@ fun StepwiseSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = StepwiseTheme.colors
+    val sounds = rememberUiSounds()
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        // Swipe down, scrim tap or back: the sheet closes with the close sound.
+        onDismissRequest = {
+            sounds.play(UiSound.Close)
+            onDismiss()
+        },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = colors.surface,
         contentColor = colors.ink,
@@ -70,7 +77,7 @@ fun StepwiseSheet(
                         color = colors.ink,
                         modifier = Modifier.weight(1f).semantics { heading() },
                     )
-                    CircleIconButton(StepIcons.Close, contentDescription = "Close", onClick = onDismiss)
+                    CircleIconButton(StepIcons.Close, contentDescription = "Close", onClick = onDismiss, sound = UiSound.Close)
                 }
             }
             content()
